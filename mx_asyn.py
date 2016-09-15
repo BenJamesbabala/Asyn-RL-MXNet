@@ -75,6 +75,7 @@ ctx = mx.gpu(2)
 batch_size = 32
 input_shape = (32, 4, 84, 84)
 input_scale = 255.0
+lock = threading.Lock()
 
 
 # =============================
@@ -295,8 +296,9 @@ def actor_learner_thread(thread_id, env, executors, num_actions, updater):
 
             # Optionally update target network
             if T % I_target == 0:
+		lock.acquire()
                 copy_weights(loss_exe, target_exe)
-
+		lock.release()
             # Optionally update online network
             if len(s_batch) == 32:
                     states = mx.nd.array(s_batch, ctx=ctx) / input_scale
@@ -311,8 +313,11 @@ def actor_learner_thread(thread_id, env, executors, num_actions, updater):
                     target_q_values = rewards + mx.nd.choose_element_0index(next_q_values, mx.nd.argmax_channel(next_q_values)) * (1.0 - terminals) * gamma
                     out_q_values = loss_exe.forward(is_train=True, data=states, target=target_q_values, action=at_encoded)[0]
                     loss_exe.backward()
+
+		    lock.acquire()
                     update_weights(loss_exe, updater)
                     copy_weights(loss_exe, policy_exe)
+		    lock.release()
 
                     loss = mx.nd.square(out_q_values - target_q_values)
                     loss = mx.nd.sum(loss)*batch_size
@@ -331,7 +336,7 @@ def actor_learner_thread(thread_id, env, executors, num_actions, updater):
 
             # Print end of episode stats
             if terminal:
-                info_str = "Enduro: Thread %2d | Step %8d/%8d | Reward %3d | Qmax %.4f | Loss %.3f | Epsilon %.4f" % (thread_id, t, T, ep_reward, episode_ave_max_q/ep_t, ep_total_loss/ep_t, epsilon)
+                info_str = "Enduro: Thread %2d | Step %8d/%8d | Reward %3d | Qmax %.4f | Loss %.3f | Epsilon %.4f" % (thread_id, ep_t, T, ep_reward, episode_ave_max_q/ep_t, ep_total_loss/ep_t, epsilon)
 		f_log.write(info_str + '\n')
                 print(info_str)
                 break
@@ -354,7 +359,7 @@ def train(executors, num_actions):
     # Set up game environments (one per thread)
     envs = [gym.make(game) for _ in range(n_threads)]
     loss_exe, policy_exe, target_exe = executors
-    optimizer = mx.optimizer.create(name='RMSProp', learning_rate=0.001, gamma2=0.0, clip_gradient=1.0)
+    optimizer = mx.optimizer.create(name='RMSProp', learning_rate=0.001, gamma2=0.0)
     updater = mx.optimizer.get_updater(optimizer)
     initializer = DQNInitializer()
     init_exe(loss_exe, initializer)
