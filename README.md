@@ -8,6 +8,9 @@ This package provides a MXNet based implementation of Asynchronous One Step Q Le
 
 # Issues
 
+Current version cannot learn well, and sometimes process went dead due to multi-threading.
+Investigation is undergoing... please help...
+
 # Requirements
 
 * [MXNet](https://github.com/dmlc/mxnet)
